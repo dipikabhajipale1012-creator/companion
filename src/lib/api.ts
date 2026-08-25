@@ -13,6 +13,7 @@ import type { Stats, Task, TaskInput } from "./types";
  */
 
 const STORAGE_KEY = "stm.tasks.v1";
+const STORAGE_VERSION = 1;
 const LATENCY = 380;
 
 const delay = (ms = LATENCY) => new Promise((r) => setTimeout(r, ms));
@@ -98,11 +99,30 @@ function read(): Task[] {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        memory = JSON.parse(raw) as Task[];
-        return memory;
+        const parsed = JSON.parse(raw) as unknown;
+        // Handle versioned storage format { version, tasks }
+        if (parsed && typeof parsed === "object" && "version" in parsed && "tasks" in parsed) {
+          const { version, tasks } = parsed as { version: number; tasks: unknown };
+          if (version === STORAGE_VERSION && Array.isArray(tasks)) {
+            memory = tasks as Task[];
+            return memory;
+          }
+        }
+        // Handle legacy bare array format (backward compatibility)
+        if (Array.isArray(parsed)) {
+          memory = parsed as Task[];
+          return memory;
+        }
+        // Version mismatch or invalid structure — log and fall back to seed
+        console.warn(
+          `[Campanion] Stored task data version mismatch or corrupt. Expected version ${STORAGE_VERSION}, resetting to seed data.`
+        );
       }
-    } catch {
+    } catch (error) {
       /* ignore corrupt storage */
+      console.warn(
+        `[Campanion] Failed to parse stored task data: ${error instanceof Error ? error.message : String(error)}. Resetting to seed data.`
+      );
     }
   }
   memory = seedTasks();
@@ -114,7 +134,8 @@ function write(tasks: Task[]) {
   memory = tasks;
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+      const payload = { version: STORAGE_VERSION, tasks };
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {
       /* ignore quota errors */
     }
