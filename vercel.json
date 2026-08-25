@@ -1,5 +1,11 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": ".output/public",
-  "framework": "nitro"
+  "framework": "nitro",
+  "rewrites": [
+    {
+      "source": "/:path((?!_next/|_vercel/|\\.).*)",
+      "destination": "/api/__server"
+    }
+  ]
 }
